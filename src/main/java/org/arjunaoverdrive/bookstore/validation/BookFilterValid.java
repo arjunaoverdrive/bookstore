@@ -11,7 +11,7 @@ import java.lang.annotation.*;
 @Target(ElementType.TYPE)
 public @interface BookFilterValid {
 
-    String message() default  "Either author or title must be specified!";
+    String message() default  "Both author or title must be specified!";
 
     Class<?>[] groups() default {};
 

@@ -4,8 +4,8 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "category")
@@ -15,6 +15,7 @@ import java.util.List;
 @NoArgsConstructor
 @Builder
 @ToString
+@EqualsAndHashCode
 public class Category implements Serializable {
 
     @Id
@@ -26,12 +27,14 @@ public class Category implements Serializable {
     private String name;
 
     @ToString.Exclude
+    @EqualsAndHashCode.Exclude
     @Builder.Default
-    @OneToMany(mappedBy = "category", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
-    private List<Book> books = new ArrayList<>();
+    @OneToMany(mappedBy = "category", cascade = CascadeType.MERGE)
+    private Set<Book> books = new HashSet<>();
 
     public void addBook(Book book){
         this.books.add(book);
+        book.setCategory(this);
     }
 
     public void deleteBook(Book book){

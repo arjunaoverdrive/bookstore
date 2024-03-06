@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.arjunaoverdrive.bookstore.dao.CategoryRepository;
 import org.arjunaoverdrive.bookstore.exception.CannotSaveEntityException;
+import org.arjunaoverdrive.bookstore.model.Book;
 import org.arjunaoverdrive.bookstore.model.Category;
 import org.arjunaoverdrive.bookstore.service.CategoryService;
 import org.springframework.stereotype.Service;
@@ -15,6 +16,12 @@ public class CategoryServiceImpl implements CategoryService {
 
     private final CategoryRepository repository;
 
+    @Override
+    public Category findCategoryByName(String name) {
+        log.debug("Getting category by name {}", name );
+        return repository.findByName(name)
+                .orElse(null);
+    }
 
     @Override
     public Category createCategory(String name) {
@@ -39,9 +46,9 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     @Override
-    public Category findCategoryByName(String name) {
-        log.debug("Getting category by name {}", name );
-        return repository.findByName(name)
-                .orElseThrow(null);
+    public Category createCategory(String name, Book book) {
+        Category category = createCategory(name);
+        category.addBook(book);
+        return category;
     }
 }

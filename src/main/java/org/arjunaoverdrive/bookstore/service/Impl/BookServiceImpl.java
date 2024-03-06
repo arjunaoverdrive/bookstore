@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.arjunaoverdrive.bookstore.configuration.cache.properties.AppCacheProperties;
 import org.arjunaoverdrive.bookstore.dao.BookRepository;
-import org.arjunaoverdrive.bookstore.dao.BookSpecification;
 import org.arjunaoverdrive.bookstore.exception.CannotSaveEntityException;
 import org.arjunaoverdrive.bookstore.exception.EntityNotFoundException;
 import org.arjunaoverdrive.bookstore.model.Book;
@@ -17,9 +16,7 @@ import org.springframework.cache.annotation.CacheConfig;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.text.MessageFormat;
 import java.time.Instant;
@@ -36,37 +33,42 @@ public class BookServiceImpl implements BookService {
     private final BookRepository bookRepository;
     private final CategoryService categoryService;
 
-    private Book findById(UUID id){
+    public Book findById(UUID id) {
         return bookRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException(
-                        MessageFormat.format("Book with id {0} not found.", id )
+                        MessageFormat.format("Book with id {0} not found.", id)
                 ));
     }
 
     @Override
-    @Cacheable(value = AppCacheProperties.CacheNames.FILTERED_BY_TITLE_AND_AUTHOR, key = "#bookFilter.author + #bookFilter.title")
+    @Cacheable(value = AppCacheProperties.CacheNames.FILTERED_BY_TITLE_AND_AUTHOR,
+            key = "#bookFilter.author + ' ' + #bookFilter.title", unless = "#result == null")
     public Book findByTitleAndAuthor(BookFilter bookFilter) {
-        Specification<Book> specs = BookSpecification.withFilter(bookFilter);
-        return bookRepository.findOne(specs).orElseThrow(() ->
-                new EntityNotFoundException(MessageFormat.format("Book with filter parameters {0} not found", bookFilter)));
+        Book book = bookRepository.findBooksByAuthorAndTitle(bookFilter.getAuthor(), bookFilter.getTitle())
+                .stream()
+                .findFirst()
+                .orElseThrow(() ->
+                        new EntityNotFoundException(
+                                MessageFormat.format("Book with filter parameters {0} not found", bookFilter)
+                        )
+                );
+        return book;
     }
 
     @Override
-    @Cacheable(value = AppCacheProperties.CacheNames.BOOKS_BY_CATEGORY, key = "#categoryName")
+    @Cacheable(value = AppCacheProperties.CacheNames.BOOKS_BY_CATEGORY, key = "#p0", unless = "#result == null || #result.isEmpty()")
     public List<Book> findByCategory(String categoryName) {
         Category category = categoryService.findCategoryByName(categoryName);
-        if(category == null){
-            return new ArrayList<>();
-        }
-        return category.getBooks();
+        return new ArrayList<>(bookRepository.findAllByCategory(category));
     }
 
     @Override
-    @Transactional
-    @Caching(evict = {
-            @CacheEvict(value = AppCacheProperties.CacheNames.BOOKS_BY_CATEGORY, allEntries = true, beforeInvocation = true),
-            @CacheEvict(value = AppCacheProperties.CacheNames.FILTERED_BY_TITLE_AND_AUTHOR, allEntries = true, beforeInvocation = true)
-    })
+    @Caching(
+            evict = {
+                    @CacheEvict(value = AppCacheProperties.CacheNames.BOOKS_BY_CATEGORY, key = "#book.category.name"),
+                    @CacheEvict(value = AppCacheProperties.CacheNames.FILTERED_BY_TITLE_AND_AUTHOR,
+                            key = "#book.author + ' ' + #book.title")
+            })
     public Book createBook(Book book) {
         Category category = book.getCategory();
         category.addBook(book);
@@ -77,33 +79,34 @@ public class BookServiceImpl implements BookService {
     }
 
     @Override
-    @Caching(evict = {
-            @CacheEvict(value = AppCacheProperties.CacheNames.BOOKS_BY_CATEGORY, allEntries = true, beforeInvocation = true),
-            @CacheEvict(value = AppCacheProperties.CacheNames.FILTERED_BY_TITLE_AND_AUTHOR, allEntries = true, beforeInvocation = true)
-    })
-    public Book updateBook(Book book) {
-        Book fromDb = findById(book.getId());
-        BeanUtils.copyNonNullProperties(book, fromDb);
-        fromDb.setUpdatedAt(Instant.now());
-
-        try{
-            bookRepository.save(fromDb);
-        }catch (Exception e){
+    @Caching(
+            evict = {
+                    @CacheEvict(value = AppCacheProperties.CacheNames.BOOKS_BY_CATEGORY, key = "#existing.category.name",
+                             beforeInvocation = true),
+                    @CacheEvict(value = AppCacheProperties.CacheNames.BOOKS_BY_CATEGORY, key = "#bookRequest.category.name",
+                            beforeInvocation = true),
+                    @CacheEvict(value = AppCacheProperties.CacheNames.FILTERED_BY_TITLE_AND_AUTHOR,
+                            key = "#existing.author + ' ' + #existing.title", cacheResolver = "customCacheResolver",
+                            beforeInvocation = true),
+                    @CacheEvict(value = AppCacheProperties.CacheNames.FILTERED_BY_TITLE_AND_AUTHOR,
+                            key = "#bookRequest.author + ' ' + #bookRequest.title", cacheResolver = "customCacheResolver",
+                            beforeInvocation = true)
+            })
+    public Book updateBook(Book existing, Book bookRequest) {
+        BeanUtils.copyNonNullProperties(bookRequest, existing);
+        existing.setUpdatedAt(Instant.now());
+        try {
+            bookRepository.save(existing);
+        } catch (Exception e) {
             throw new CannotSaveEntityException(e.getMessage());
         }
 
-        return fromDb;
+        return existing;
     }
 
     @Override
-    @Transactional
-    @Caching(evict = {
-            @CacheEvict(value = AppCacheProperties.CacheNames.BOOKS_BY_CATEGORY, allEntries = true, beforeInvocation = true),
-            @CacheEvict(value = AppCacheProperties.CacheNames.FILTERED_BY_TITLE_AND_AUTHOR, allEntries = true, beforeInvocation = true)
-    })
     public void deleteBookById(UUID id) {
         Book toDelete = findById(id);
-        toDelete.getCategory().deleteBook(toDelete);
         bookRepository.delete(toDelete);
     }
 

@@ -8,7 +8,7 @@ import java.lang.reflect.Field;
 @UtilityClass
 public class BeanUtils {
     @SneakyThrows
-    public void copyNonNullProperties(Object source, Object target){
+    public void copyNonNullProperties(Object source, Object target) {
         Class<?> clazz = source.getClass();
 
         Field[] fields = clazz.getDeclaredFields();
@@ -16,7 +16,7 @@ public class BeanUtils {
             field.setAccessible(true);
             Object value = field.get(source);
 
-            if(value != null){
+            if (value != null) {
                 field.set(target, value);
             }
         }
